@@ -22,7 +22,8 @@ import {
   firebaseConfig,
   firebaseConfigBackup,
   firestoreDatabaseId,
-  firestoreDatabaseIdBackup
+  firestoreDatabaseIdBackup,
+  smsFunctionUrl
 } from "./firebase-config.js";
 
 const app = initializeApp(firebaseConfig);
@@ -754,8 +755,31 @@ async function sendDeliveryFile(orderId) {
       createdAtMs: Date.now()
     });
 
+    const phoneInput = document.getElementById(`sms-phone-${orderId}`);
+    const phoneNumber = String(phoneInput?.value || order.phoneNumber || "3500159733").trim();
+    if (!phoneNumber) {
+      throw new Error("Numero cliente mancante: impossibile inviare l'SMS automatico");
+    }
+    const currentUser = auth.currentUser;
+    const idToken = await currentUser?.getIdToken();
+    if (!idToken) {
+      throw new Error("Sessione admin scaduta: effettua nuovamente il login");
+    }
+    const smsResponse = await withTimeout(fetch(smsFunctionUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`
+      },
+      body: JSON.stringify({ orderId: String(orderId), phoneNumber })
+    }), "Servizio SMS non raggiungibile");
+    const smsPayload = await smsResponse.json().catch(() => ({}));
+    if (!smsResponse.ok || !smsPayload.success) {
+      throw new Error(smsPayload.error || "Invio SMS non riuscito");
+    }
+
     await loadOrders();
-    setStatus(ordersStatus, "success", `Mappatura inviata per ordine #${orderId}: il cliente ricevera una notifica`);
+    setStatus(ordersStatus, "success", `Mappatura e SMS inviati per ordine #${orderId}`);
   } catch (error) {
     console.error("sendDeliveryFile error", error);
     setStatus(ordersStatus, "error", error.message || "Errore invio mappatura");
