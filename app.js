@@ -210,6 +210,7 @@ function mapOrder(docSnapshot) {
     userUid: data.userUid || "",
     userEmail: data.userEmail || "",
     username: data.username || "",
+    phoneNumber: data.userPhone || data.phoneNumber || "3500159733",
     nome: data.nome || "Veicolo",
     modello: data.modello || "-",
     anno: data.anno || "-",
@@ -361,7 +362,7 @@ function renderOrders() {
             : ""}
         </div>
         <div class="sms-actions">
-          <input type="tel" class="sms-phone-input" id="sms-phone-${order.id}" placeholder="Numero cliente (+39...)" autocomplete="tel" />
+          <input type="tel" class="sms-phone-input" id="sms-phone-${order.id}" value="${order.phoneNumber || "3500159733"}" placeholder="Numero cliente (+39...)" autocomplete="tel" />
           <button class="sms-button" data-order-id="${order.id}" type="button" ${order.delivery_file ? "" : "disabled"}>Prepara SMS</button>
         </div>
       </div>
