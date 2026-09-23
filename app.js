@@ -360,6 +360,10 @@ function renderOrders() {
             ? `<button class="delivery-download-button" data-order-id="${order.id}" type="button">Scarica copia</button>`
             : ""}
         </div>
+        <div class="sms-actions">
+          <input type="tel" class="sms-phone-input" id="sms-phone-${order.id}" placeholder="Numero cliente (+39...)" autocomplete="tel" />
+          <button class="sms-button" data-order-id="${order.id}" type="button" ${order.delivery_file ? "" : "disabled"}>Prepara SMS</button>
+        </div>
       </div>
     `;
 
@@ -759,6 +763,27 @@ async function sendDeliveryFile(orderId) {
   }
 }
 
+function prepareReadySms(orderId) {
+  const order = allOrders.find((entry) => Number(entry.id) === Number(orderId));
+  if (!order?.delivery_file) {
+    setStatus(ordersStatus, "error", "Invia prima la mappatura, poi prepara l'SMS");
+    return;
+  }
+
+  const phoneInput = document.getElementById(`sms-phone-${orderId}`);
+  const phone = String(phoneInput?.value || "").trim();
+  if (!phone) {
+    setStatus(ordersStatus, "error", "Inserisci il numero del cliente con prefisso internazionale");
+    phoneInput?.focus();
+    return;
+  }
+
+  const message = `MD Tuning Lab: la mappatura per l'ordine #${order.id} è pronta. Apri l'app per scaricarla.`;
+  const smsUrl = `sms:${encodeURIComponent(phone)}?body=${encodeURIComponent(message)}`;
+  window.location.href = smsUrl;
+  setStatus(ordersStatus, "success", "SMS preparato: completa l'invio nell'app Messaggi");
+}
+
 function describeAuthError(error) {
   const code = String(error?.code || "");
   const rawMessage = String(error?.message || "");
@@ -845,6 +870,12 @@ ordersList.addEventListener("click", (event) => {
   const deliveryButton = event.target.closest(".delivery-button");
   if (deliveryButton) {
     sendDeliveryFile(deliveryButton.dataset.orderId).catch(() => {});
+    return;
+  }
+
+  const smsButton = event.target.closest(".sms-button");
+  if (smsButton) {
+    prepareReadySms(smsButton.dataset.orderId);
     return;
   }
 

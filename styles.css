@@ -427,6 +427,38 @@ textarea:focus {
   color: var(--text);
 }
 
+.sms-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.sms-phone-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text);
+}
+
+.sms-button {
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: #4f9cff;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sms-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .status-message {
   min-height: 22px;
   color: var(--muted);
