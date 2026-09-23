@@ -651,6 +651,33 @@ function triggerBrowserDownload(fileName, mimeType, base64Data) {
   URL.revokeObjectURL(objectUrl);
 }
 
+async function sendReadySms(orderId, phoneNumber) {
+  const normalizedPhone = String(phoneNumber || "").trim();
+  if (!normalizedPhone) {
+    throw new Error("Numero cliente mancante");
+  }
+
+  const currentUser = auth.currentUser;
+  const idToken = await currentUser?.getIdToken();
+  if (!idToken) {
+    throw new Error("Sessione admin scaduta: effettua nuovamente il login");
+  }
+
+  const response = await withTimeout(fetch(smsFunctionUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${idToken}`
+    },
+    body: JSON.stringify({ orderId: String(orderId), phoneNumber: normalizedPhone })
+  }), "Servizio SMS non raggiungibile");
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.success) {
+    throw new Error(payload.error || "Invio SMS non riuscito");
+  }
+  return payload;
+}
+
 async function downloadDeliveryCopy(orderId) {
   const order = allOrders.find((entry) => Number(entry.id) === Number(orderId));
   const deliveryFile = order?.delivery_file;
@@ -757,26 +784,7 @@ async function sendDeliveryFile(orderId) {
 
     const phoneInput = document.getElementById(`sms-phone-${orderId}`);
     const phoneNumber = String(phoneInput?.value || order.phoneNumber || "3500159733").trim();
-    if (!phoneNumber) {
-      throw new Error("Numero cliente mancante: impossibile inviare l'SMS automatico");
-    }
-    const currentUser = auth.currentUser;
-    const idToken = await currentUser?.getIdToken();
-    if (!idToken) {
-      throw new Error("Sessione admin scaduta: effettua nuovamente il login");
-    }
-    const smsResponse = await withTimeout(fetch(smsFunctionUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`
-      },
-      body: JSON.stringify({ orderId: String(orderId), phoneNumber })
-    }), "Servizio SMS non raggiungibile");
-    const smsPayload = await smsResponse.json().catch(() => ({}));
-    if (!smsResponse.ok || !smsPayload.success) {
-      throw new Error(smsPayload.error || "Invio SMS non riuscito");
-    }
+    await sendReadySms(orderId, phoneNumber);
 
     await loadOrders();
     setStatus(ordersStatus, "success", `Mappatura e SMS inviati per ordine #${orderId}`);
@@ -788,7 +796,7 @@ async function sendDeliveryFile(orderId) {
   }
 }
 
-function prepareReadySms(orderId) {
+async function prepareReadySms(orderId) {
   const order = allOrders.find((entry) => Number(entry.id) === Number(orderId));
   if (!order?.delivery_file) {
     setStatus(ordersStatus, "error", "Invia prima la mappatura, poi prepara l'SMS");
@@ -803,10 +811,18 @@ function prepareReadySms(orderId) {
     return;
   }
 
-  const message = `MD Tuning Lab: la mappatura per l'ordine #${order.id} è pronta. Apri l'app per scaricarla.`;
-  const smsUrl = `sms:${encodeURIComponent(phone)}?body=${encodeURIComponent(message)}`;
-  window.location.href = smsUrl;
-  setStatus(ordersStatus, "success", "SMS preparato: completa l'invio nell'app Messaggi");
+  const smsButton = document.querySelector(`.sms-button[data-order-id="${orderId}"]`);
+  if (smsButton) smsButton.disabled = true;
+  setStatus(ordersStatus, "success", `Invio SMS per ordine #${orderId}...`);
+  try {
+    await sendReadySms(orderId, phone);
+    setStatus(ordersStatus, "success", `SMS inviato al cliente per ordine #${orderId}`);
+  } catch (error) {
+    console.error("prepareReadySms error", error);
+    setStatus(ordersStatus, "error", error.message || "Invio SMS non riuscito");
+  } finally {
+    if (smsButton) smsButton.disabled = false;
+  }
 }
 
 function describeAuthError(error) {
@@ -900,7 +916,7 @@ ordersList.addEventListener("click", (event) => {
 
   const smsButton = event.target.closest(".sms-button");
   if (smsButton) {
-    prepareReadySms(smsButton.dataset.orderId);
+    prepareReadySms(smsButton.dataset.orderId).catch(() => {});
     return;
   }
 
