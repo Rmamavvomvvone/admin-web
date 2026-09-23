@@ -228,6 +228,8 @@ function mapOrder(docSnapshot) {
     approvato_at: normalizeDateField(data, "approvatoAt", "approvedAtMs"),
     consegnato_at: normalizeDateField(data, "consegnatoAt", "consegnatoAtMs"),
     delivery_file: data.delivery_file || null,
+    sms_status: data.sms_status || "",
+    sms_to: data.sms_to || "",
     mappa_descrizione: data.mappa_descrizione || "",
     files: Array.isArray(data.files) ? data.files : []
   };
@@ -393,6 +395,9 @@ function renderOrders() {
       </div>
 
       <p class="order-request"><strong>Richiesta:</strong> ${order.richiesta}</p>
+      ${order.sms_status
+        ? `<p class="sms-delivery-status ${order.sms_status === "delivered" ? "is-delivered" : order.sms_status === "failed" ? "is-failed" : ""}"><strong>SMS:</strong> ${order.sms_status === "delivered" ? "Messaggio consegnato al cliente" : order.sms_status === "failed" ? "Consegna SMS fallita" : `Stato ${order.sms_status}`}${order.sms_to ? ` · ${order.sms_to}` : ""}</p>`
+        : ""}
       ${order.esito_admin_note ? `<p class="order-note"><strong>Nota admin:</strong> ${order.esito_admin_note}</p>` : ""}
       ${filesMarkup}
       ${deliveryMarkup}
@@ -441,7 +446,9 @@ function startOrdersListener() {
 
   let initialized = false;
   ordersUnsubscribe = onSnapshot(collection(currentDb(), "orders"), () => {
-    if (initialized) setNewOrdersNotice(true);
+    if (initialized) {
+      loadOrders().catch((error) => console.error("orders refresh after update error", error));
+    }
     initialized = true;
   }, (error) => {
     console.error("orders listener error", error);

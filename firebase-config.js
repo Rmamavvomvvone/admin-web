@@ -20,3 +20,4 @@ export const firebaseConfigBackup = {
 
 export const firestoreDatabaseIdBackup = "dati";
 export const smsFunctionUrl = "https://europe-west1-mdperformancetuninglab.cloudfunctions.net/sendReadySms";
+export const smsStatusCallbackUrl = "https://europe-west1-mdperformancetuninglab.cloudfunctions.net/smsStatusCallback";

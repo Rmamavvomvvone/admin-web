@@ -459,6 +459,19 @@ textarea:focus {
   cursor: not-allowed;
 }
 
+.sms-delivery-status {
+  margin: 10px 0;
+  color: var(--muted);
+}
+
+.sms-delivery-status.is-delivered {
+  color: var(--success);
+}
+
+.sms-delivery-status.is-failed {
+  color: var(--danger);
+}
+
 .status-message {
   min-height: 22px;
   color: var(--muted);
