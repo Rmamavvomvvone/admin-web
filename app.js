@@ -35,6 +35,17 @@ const dbBackup = getFirestore(backupApp, firestoreDatabaseIdBackup);
 
 // true mentre il primario risponde con quota esaurita: le operazioni vanno sul backup.
 let usingBackupDb = false;
+const FIRESTORE_OPERATION_TIMEOUT_MS = 20000;
+
+function withTimeout(promise, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => {
+      reject(new Error(`${label}: timeout dopo ${FIRESTORE_OPERATION_TIMEOUT_MS / 1000}s`));
+    }, FIRESTORE_OPERATION_TIMEOUT_MS);
+  });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
+}
 
 function isQuotaError(error) {
   const code = String(error?.code || "").toLowerCase();
@@ -52,10 +63,10 @@ function currentDb() {
 // Esegue l'operazione sul DB primario; se la quota e' esaurita passa al backup e la riprova.
 async function withDbFailover(operation) {
   if (usingBackupDb) {
-    return operation(dbBackup);
+    return withTimeout(operation(dbBackup), "Database backup non raggiungibile");
   }
   try {
-    return await operation(db);
+    return await withTimeout(operation(db), "Database primario non raggiungibile");
   } catch (error) {
     if (!isQuotaError(error)) {
       throw error;
@@ -63,7 +74,7 @@ async function withDbFailover(operation) {
     console.warn("[admin-web] Quota primario esaurita, passaggio al database di backup:", error.message);
     usingBackupDb = true;
     updateDbBadge();
-    return operation(dbBackup);
+    return withTimeout(operation(dbBackup), "Database backup non raggiungibile");
   }
 }
 
@@ -97,7 +108,10 @@ async function setDocBoth(collectionName, docId, payload) {
   await withDbFailover((target) => setDoc(doc(target, collectionName, docId), payload));
   const otherDb = usingBackupDb ? db : dbBackup;
   try {
-    await setDoc(doc(otherDb, collectionName, docId), payload);
+    await withTimeout(
+      setDoc(doc(otherDb, collectionName, docId), payload),
+      `Sincronizzazione secondaria ${collectionName}/${docId} non riuscita`
+    );
   } catch (error) {
     console.warn(`[admin-web] Sync secondario fallita (${collectionName}/${docId}):`, error.message);
   }
@@ -107,7 +121,10 @@ async function updateDocBoth(collectionName, docId, payload) {
   await withDbFailover((target) => updateDoc(doc(target, collectionName, docId), payload));
   const otherDb = usingBackupDb ? db : dbBackup;
   try {
-    await updateDoc(doc(otherDb, collectionName, docId), payload);
+    await withTimeout(
+      updateDoc(doc(otherDb, collectionName, docId), payload),
+      `Sincronizzazione secondaria ${collectionName}/${docId} non riuscita`
+    );
   } catch (error) {
     console.warn(`[admin-web] Sync secondario fallita (${collectionName}/${docId}):`, error.message);
   }
@@ -433,8 +450,23 @@ function stopOrdersListener() {
 }
 
 async function ensureAdminProfile(user) {
-  const profileSnapshot = await withDbFailover((target) => getDoc(doc(target, "users", user.uid)));
-  if (!profileSnapshot.exists()) {
+  // Legge il profilo da entrambi i database: se i DB sono disallineati
+  // (es. provisioning riuscito solo su uno), trova comunque il profilo admin.
+  const snapshots = [];
+  try {
+    snapshots.push(await withDbFailover((target) => getDoc(doc(target, "users", user.uid))));
+  } catch (error) {
+    console.warn("[admin-web] Lettura profilo DB attivo fallita:", error.message);
+  }
+  try {
+    const otherDb = usingBackupDb ? db : dbBackup;
+    snapshots.push(await getDoc(doc(otherDb, "users", user.uid)));
+  } catch (error) {
+    console.warn("[admin-web] Lettura profilo secondario fallita:", error.message);
+  }
+
+  const profileSnapshot = snapshots.find((snap) => snap?.exists());
+  if (!profileSnapshot) {
     throw new Error("Profilo admin non trovato");
   }
 
